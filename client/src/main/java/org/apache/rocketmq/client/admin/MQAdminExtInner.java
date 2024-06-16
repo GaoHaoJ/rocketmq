@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.client.admin;
 
+//测试 git
 public interface MQAdminExtInner {
 
 }
