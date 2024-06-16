@@ -26,10 +26,19 @@ import org.apache.rocketmq.remoting.protocol.route.QueueData;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 
 public class TopicPublishInfo {
+    //表示该主题是否是顺序消息主题
     private boolean orderTopic = false;
+
+    //表示是否已经获取到该主题的路由信息
     private boolean haveTopicRouterInfo = false;
+
+    //保存了该主题的所有消息队列
     private List<MessageQueue> messageQueueList = new ArrayList<>();
+
+    //一个原子整数，用于在发送消息时选择队列，支持轮询策略
     private volatile ThreadLocalIndex sendWhichQueue = new ThreadLocalIndex();
+
+    //保存主题的路由信息
     private TopicRouteData topicRouteData;
 
     public interface QueueFilter {
