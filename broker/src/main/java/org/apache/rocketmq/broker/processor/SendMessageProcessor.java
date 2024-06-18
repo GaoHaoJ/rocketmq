@@ -91,6 +91,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             case RequestCode.CONSUMER_SEND_MSG_BACK:
                 return this.consumerSendMsgBack(ctx, request);
             default:
+                //做下类型转换
                 SendMessageRequestHeader requestHeader = parseRequestHeader(request);
                 if (requestHeader == null) {
                     return null;
@@ -260,12 +261,13 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         if (queueIdInt < 0) {
             queueIdInt = randomQueueId(topicConfig.getWriteQueueNums());
         }
-
+        //将消息转换为brokr内部的处理对象
         MessageExtBrokerInner msgInner = new MessageExtBrokerInner();
         msgInner.setTopic(requestHeader.getTopic());
         msgInner.setQueueId(queueIdInt);
-
+        //转化消息的一些属性
         Map<String, String> oriProps = MessageDecoder.string2messageProperties(requestHeader.getProperties());
+        //这个是用来出处理死信队列和延迟消息的
         if (!handleRetryAndDLQ(requestHeader, response, request, msgInner, topicConfig, oriProps)) {
             return response;
         }
@@ -274,6 +276,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         msgInner.setFlag(requestHeader.getFlag());
 
         String uniqKey = oriProps.get(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX);
+        //设置唯一键
         if (uniqKey == null || uniqKey.length() <= 0) {
             uniqKey = MessageClientIDSetter.createUniqID();
             oriProps.put(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX, uniqKey);
@@ -303,6 +306,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         // Map<String, String> oriProps = MessageDecoder.string2messageProperties(requestHeader.getProperties());
         String traFlag = oriProps.get(MessageConst.PROPERTY_TRANSACTION_PREPARED);
         boolean sendTransactionPrepareMessage;
+        //traFlag 应该是事务的标志
         if (Boolean.parseBoolean(traFlag)
             && !(msgInner.getReconsumeTimes() > 0 && msgInner.getDelayTimeLevel() > 0)) { //For client under version 4.6.1
             if (this.brokerController.getBrokerConfig().isRejectTransactionMessage()) {
@@ -318,9 +322,10 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         }
 
         long beginTimeMillis = this.brokerController.getMessageStore().now();
-
+        //这里判断是用同步发还是异步
         if (brokerController.getBrokerConfig().isAsyncSendEnable()) {
             CompletableFuture<PutMessageResult> asyncPutMessageFuture;
+            //决策是不是事务
             if (sendTransactionPrepareMessage) {
                 asyncPutMessageFuture = this.brokerController.getTransactionalMessageService().asyncPrepareMessage(msgInner);
             } else {

@@ -323,18 +323,20 @@ public abstract class NettyRemotingAbstract {
             try {
                 String remoteAddr = RemotingHelper.parseChannelRemoteAddr(ctx.channel());
                 try {
+                    //做一些前置工作
                     doBeforeRpcHooks(remoteAddr, cmd);
                 } catch (AbortProcessException e) {
                     throw e;
                 } catch (Exception e) {
                     exception = e;
                 }
-
+                //todo 这个是干什么的？
                 if (this.requestPipeline != null) {
                     this.requestPipeline.execute(ctx, cmd);
                 }
 
                 if (exception == null) {
+                    // 没有爆出异常，开始处理消息
                     response = pair.getObject1().processRequest(ctx, cmd);
                 } else {
                     response = RemotingCommand.createResponseCommand(RemotingSysResponseCode.SYSTEM_ERROR, null);

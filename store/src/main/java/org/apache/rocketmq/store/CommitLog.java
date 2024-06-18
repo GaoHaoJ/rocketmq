@@ -900,38 +900,45 @@ public class CommitLog implements Swappable {
     }
 
     public CompletableFuture<PutMessageResult> asyncPutMessage(final MessageExtBrokerInner msg) {
-        // Set the storage time
+        //  如果消息去重功能未开启，则设置存储时间戳
         if (!defaultMessageStore.getMessageStoreConfig().isDuplicationEnable()) {
             msg.setStoreTimestamp(System.currentTimeMillis());
         }
-        // Set the message body CRC (consider the most appropriate setting on the client)
+        // 设置消息体的 CRC 校验码
         msg.setBodyCRC(UtilAll.crc32(msg.getBody()));
+
+        // 如果启用附加 CRC 属性，删除消息中的 CRC 属性
+
         if (enabledAppendPropCRC) {
             // delete crc32 properties if exist
             msg.deleteProperty(MessageConst.PROPERTY_CRC32);
         }
         // Back to Results
         AppendMessageResult result = null;
-
+        // 初始化存储服务和相关配置
         StoreStatsService storeStatsService = this.defaultMessageStore.getStoreStatsService();
 
         String topic = msg.getTopic();
         msg.setVersion(MessageVersion.MESSAGE_VERSION_V1);
+
+        // 自动根据主题长度设置消息版本
         boolean autoMessageVersionOnTopicLen =
             this.defaultMessageStore.getMessageStoreConfig().isAutoMessageVersionOnTopicLen();
         if (autoMessageVersionOnTopicLen && topic.length() > Byte.MAX_VALUE) {
             msg.setVersion(MessageVersion.MESSAGE_VERSION_V2);
         }
 
+        // 设置消息的 BornHost 和 StoreHost 是否为 IPv6 标志
         InetSocketAddress bornSocketAddress = (InetSocketAddress) msg.getBornHost();
         if (bornSocketAddress.getAddress() instanceof Inet6Address) {
             msg.setBornHostV6Flag();
         }
-
+        // 获取当前线程的 PutMessageThreadLocal 实例，并更新最大消息大小
         InetSocketAddress storeSocketAddress = (InetSocketAddress) msg.getStoreHost();
         if (storeSocketAddress.getAddress() instanceof Inet6Address) {
             msg.setStoreHostAddressV6Flag();
         }
+        // 获取当前线程的 PutMessageThreadLocal 实例，并更新最大消息大小
 
         PutMessageThreadLocal putMessageThreadLocal = this.putMessageThreadLocal.get();
         updateMaxMessageSize(putMessageThreadLocal);
@@ -940,6 +947,7 @@ public class CommitLog implements Swappable {
         MappedFile unlockMappedFile = null;
         MappedFile mappedFile = this.mappedFileQueue.getLastMappedFile();
 
+        // 计算当前消息的偏移量
         long currOffset;
         if (mappedFile == null) {
             currOffset = 0;
@@ -947,6 +955,7 @@ public class CommitLog implements Swappable {
             currOffset = mappedFile.getFileFromOffset() + mappedFile.getWrotePosition();
         }
 
+        // 获取需要的同步复制副本数和是否需要处理 HA
         int needAckNums = this.defaultMessageStore.getMessageStoreConfig().getInSyncReplicas();
         boolean needHandleHA = needHandleHA(msg);
 
@@ -967,7 +976,7 @@ public class CommitLog implements Swappable {
                 return CompletableFuture.completedFuture(new PutMessageResult(PutMessageStatus.IN_SYNC_REPLICAS_NOT_ENOUGH, null));
             }
         }
-
+        // 使用主题队列锁锁定主题队列，确保同时只有一个线程操作同一个主题的消息存储
         topicQueueLock.lock(topicQueueKey);
         try {
 
@@ -979,14 +988,14 @@ public class CommitLog implements Swappable {
             if (needAssignOffset) {
                 defaultMessageStore.assignOffset(msg);
             }
-
+            // 调用线程本地的编码器对消息进行编码
             PutMessageResult encodeResult = putMessageThreadLocal.getEncoder().encode(msg);
             if (encodeResult != null) {
                 return CompletableFuture.completedFuture(encodeResult);
             }
             msg.setEncodedBuff(putMessageThreadLocal.getEncoder().getEncoderBuffer());
             PutMessageContext putMessageContext = new PutMessageContext(topicQueueKey);
-
+// 根据存储配置选择自旋锁或 ReentrantLock
             putMessageLock.lock(); //spin or ReentrantLock ,depending on store config
             try {
                 long beginLockTimestamp = this.defaultMessageStore.getSystemClock().now();
@@ -1009,7 +1018,7 @@ public class CommitLog implements Swappable {
                     beginTimeInLock = 0;
                     return CompletableFuture.completedFuture(new PutMessageResult(PutMessageStatus.CREATE_MAPPED_FILE_FAILED, null));
                 }
-
+                //将消息写入到commitLog中了
                 result = mappedFile.appendMessage(msg, this.appendMessageCallback, putMessageContext);
                 switch (result.getStatus()) {
                     case PUT_OK:
