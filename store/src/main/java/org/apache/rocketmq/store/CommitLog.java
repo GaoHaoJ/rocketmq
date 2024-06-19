@@ -1058,8 +1058,15 @@ public class CommitLog implements Swappable {
             } finally {
                 putMessageLock.unlock();
             }
-            // Increase queue offset when messages are successfully written
+
+            /**
+             * 这里提前更新consumeQueue的偏移量，这个偏移量可以理解是数组中的索引，当前偏移量既能表示当前queue的大小，也能表示当前在ConsumeQueue中最后一条消息的位置
+             * 有什么用？主要是保证commitlog和Consumequeue中的消息一致和消息的顺序
+             * 保证消息的一致性是在broker挂掉的时候
+             * 保证消息的顺序是在并发写入的时候
+             */
             if (AppendMessageStatus.PUT_OK.equals(result.getStatus())) {
+                //
                 this.defaultMessageStore.increaseOffset(msg, getMessageNum(msg));
             }
         } catch (RocksDBException e) {
